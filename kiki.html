@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Food Dash — Endless Runner</title>
+  <style>
+    :root {
+      --bg: #0f1224;
+      --pane: #171a30;
+      --accent: #79ffa8;
+      --accent-2: #8ab4ff;
+      --danger: #ff6b6b;
+      --text: #e6e8ff;
+      --muted: #aeb3d6;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: radial-gradient(1200px 800px at 50% 30%, #182044, var(--bg));
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      overflow: hidden;
+    }
+    #ui {
+      position: fixed; inset: 0; pointer-events: none;
+      display: grid; grid-template-rows: auto 1fr auto; padding: 12px;
+    }
+    .topbar {
+      display: flex; gap: 12px; align-items: center; justify-content: space-between;
+      pointer-events: none;
+    }
+    .badge {
+      pointer-events: auto;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 8px 12px; border-radius: 12px; backdrop-filter: blur(6px);
+      box-shadow: 0 6px 24px rgba(0,0,0,0.25) inset, 0 6px 24px rgba(0,0,0,0.15);
+      display: inline-flex; align-items: center; gap: 8px;
+      font-weight: 600; letter-spacing: .3px;
+    }
+    .badge .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+    .row { display: flex; gap: 8px; align-items: center; }
+
+    #screen { width: 100vw; height: 100vh; display: block; }
+
+    .center-card {
+      position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+    }
+    .card {
+      pointer-events: auto; width: min(92vw, 520px);
+      background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06));
+      border: 1px solid rgba(255,255,255,0.18);
+      padding: 20px; border-radius: 20px; backdrop-filter: blur(10px);
+      box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+    }
+    .title { font-size: clamp(24px, 4vw, 36px); font-weight: 800; line-height: 1.1; }
+    .subtitle { color: var(--muted); margin-top: 6px; }
+    .actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+    button {
+      pointer-events: auto;
+      appearance: none; border: 0; border-radius: 14px; padding: 12px 16px; font-weight: 700;
+      background: var(--accent-2); color: #0a0c1a; cursor: pointer;
+      box-shadow: 0 10px 24px rgba(138,180,255,.25);
+    }
+    button.secondary { background: transparent; color: var(--text); border: 1px solid rgba(255,255,255,0.2); box-shadow: none; }
+    button.danger { background: var(--danger); color: #fff; }
+
+    .controls {
+      margin-top: 8px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,0.18);
+      color: var(--muted); font-size: 14px; display: grid; gap: 6px;
+    }
+
+    /* On-screen buttons for mobile */
+    .softkeys {
+      position: fixed; left: 0; right: 0; bottom: 10px; display: flex; justify-content: center; gap: 12px;
+      pointer-events: none;
+    }
+    .softkeys button { pointer-events: auto; padding: 12px 14px; min-width: 52px; }
+    .softkeys .wide { min-width: 86px; }
+
+    .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 80px; background: rgba(0,0,0,.5); color: #fff; padding: 6px 10px; border-radius: 10px; font-size: 12px; opacity: 0; transition: opacity .2s ease; }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <canvas id="screen"></canvas>
+  <div id="ui">
+    <div class="topbar">
+      <div class="row">
+        <div class="badge"><span class="dot"></span> <span id="status">Ready</span></div>
+        <div class="badge">Score: <span id="score">0</span></div>
+        <div class="badge">Best: <span id="best">0</span></div>
+        <div class="badge">Speed: <span id="spd">1.0x</span></div>
+      </div>
+      <div class="row">
+        <button id="btnPause" class="secondary" aria-label="Pause (P)">Pause (P)</button>
+        <button id="btnRestart" class="danger" aria-label="Restart (R)">Restart (R)</button>
+      </div>
+    </div>
+
+    <div class="center-card" id="menu">
+      <div class="card">
+        <div class="title">🍔 Food Dash</div>
+        <div class="subtitle">An endless runner like Subway Surfers — collect food instead of coins, dodge obstacles, and go the distance. Works on phones & desktops.</div>
+        <div class="actions">
+          <button id="btnPlay">Play</button>
+          <button id="btnHow" class="secondary">How to play</button>
+        </div>
+        <div class="controls" id="how" hidden>
+          <div><b>Move:</b> Swipe ◀▶ or use ◀/▶ keys</div>
+          <div><b>Jump:</b> Swipe ▲ or press Space/▲</div>
+          <div><b>Pause:</b> Tap Pause or press P</div>
+          <div><b>Restart:</b> Tap Restart or press R</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="softkeys">
+      <button id="leftKey" class="secondary" aria-label="Left">◀</button>
+      <button id="jumpKey" class="wide" aria-label="Jump">⤴ Jump</button>
+      <button id="rightKey" class="secondary" aria-label="Right">▶</button>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // --- Utility helpers
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const rand = (a, b) => a + Math.random() * (b - a);
+    const choice = arr => arr[(Math.random() * arr.length) | 0];
+
+    // --- Canvas setup with resolution scaling
+    const canvas = document.getElementById('screen');
+    const ctx = canvas.getContext('2d');
+    const DPR = () => Math.min(2, window.devicePixelRatio || 1); // cap DPR for perf
+    const VIRTUAL_W = 480, VIRTUAL_H = 800; // design resolution
+
+    function resize() {
+      const dpr = DPR();
+      canvas.width = VIRTUAL_W * dpr;
+      canvas.height = VIRTUAL_H * dpr;
+      canvas.style.width = '100vw';
+      canvas.style.height = '100vh';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in virtual units
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- Game state
+    const state = {
+      running: false,
+      gameOver: false,
+      paused: false,
+      t: 0,
+      speed: 6,            // world units per second
+      speedMul: 1,
+      dist: 0,
+      score: 0,
+      best: Number(localStorage.getItem('food_dash_best') || 0),
+      lane: 1,             // 0..2
+      targetLane: 1,
+      lanesX: [VIRTUAL_W*0.28, VIRTUAL_W*0.5, VIRTUAL_W*0.72],
+      yGround: VIRTUAL_H*0.78,
+      jumpV: 0,
+      onGround: true,
+      gravity: 40,
+      jumpStrength: 16,
+      items: [],           // collectibles
+      obstacles: [],
+      spawnTimerItem: 0,
+      spawnTimerObs: 0,
+      juice: 0,            // for hit flash
+    };
+
+    // --- UI elements
+    const elScore = document.getElementById('score');
+    const elBest = document.getElementById('best');
+    const elSpd = document.getElementById('spd');
+    const elStatus = document.getElementById('status');
+    const menu = document.getElementById('menu');
+    const how = document.getElementById('how');
+    const toast = document.getElementById('toast');
+
+    elBest.textContent = state.best;
+
+    function showToast(text) {
+      toast.textContent = text; toast.classList.add('show');
+      setTimeout(()=> toast.classList.remove('show'), 1200);
+    }
+
+    // --- Player draw helper (simple character)
+    function drawPlayer(x, y) {
+      // Body
+      ctx.fillStyle = '#ffd166';
+      ctx.beginPath(); ctx.ellipse(x, y-28, 16, 22, 0, 0, Math.PI*2); ctx.fill();
+      // Head
+      ctx.fillStyle = '#ffe28a';
+      ctx.beginPath(); ctx.arc(x, y-52, 14, 0, Math.PI*2); ctx.fill();
+      // Eyes
+      ctx.fillStyle = '#253053';
+      ctx.beginPath(); ctx.arc(x-5, y-55, 2.6, 0, Math.PI*2); ctx.arc(x+5, y-55, 2.6, 0, Math.PI*2); ctx.fill();
+      // Hair band
+      ctx.fillStyle = '#8ab4ff'; ctx.fillRect(x-14, y-62, 28, 4);
+      // Legs (simple bounce)
+      const k = Math.sin(state.t*10)*3;
+      ctx.fillStyle = '#ff6b6b';
+      ctx.fillRect(x-8, y-8, 6, 16);
+      ctx.fillRect(x+2+k, y-8, 6, 16);
+    }
+
+    // --- World helpers
+    function spawnItem() {
+      const lane = (Math.random()*3)|0;
+      const food = choice(['🍎','🍔','🍕','🥗','🍩','🍣','🌮','🥐']);
+      state.items.push({ lane, z: -20, food, taken:false });
+    }
+    function spawnObstacle() {
+      const lane = (Math.random()*3)|0;
+      const size = choice(['small','tall']);
+      state.obstacles.push({ lane, z: -20, size, hit:false });
+    }
+
+    function resetGame() {
+      state.running = true; state.gameOver = false; state.paused = false; state.t = 0;
+      state.speed = 6; state.speedMul = 1; state.dist = 0; state.score = 0; state.lane = 1; state.targetLane = 1;
+      state.onGround = true; state.jumpV = 0; state.items = []; state.obstacles = []; state.spawnTimerItem = 0; state.spawnTimerObs = 0; state.juice = 0;
+      menu.style.display = 'none';
+      elStatus.textContent = 'Running';
+      showToast('Go!');
+    }
+
+    // --- Input
+    function laneLeft(){ state.targetLane = clamp(state.targetLane-1, 0, 2); }
+    function laneRight(){ state.targetLane = clamp(state.targetLane+1, 0, 2); }
+    function jump(){ if(state.onGround){ state.jumpV = state.jumpStrength; state.onGround = false; } }
+
+    // Keyboard
+    window.addEventListener('keydown', (e)=>{
+      if(e.key === 'ArrowLeft') laneLeft();
+      if(e.key === 'ArrowRight') laneRight();
+      if(e.key === 'ArrowUp' || e.key === ' ') jump();
+      if(e.key.toLowerCase() === 'p') togglePause();
+      if(e.key.toLowerCase() === 'r') restart();
+    });
+
+    // Touch swipe
+    let touchStart = null;
+    canvas.addEventListener('touchstart', (e)=>{
+      if(!state.running && !state.gameOver) return; // keep swipes for gameplay only
+      touchStart = { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY, t: performance.now() };
+    }, {passive:true});
+    canvas.addEventListener('touchend', (e)=>{
+      if(!touchStart) return;
+      const dx = e.changedTouches[0].clientX - touchStart.x;
+      const dy = e.changedTouches[0].clientY - touchStart.y;
+      const dt = performance.now() - touchStart.t;
+      const absX = Math.abs(dx), absY = Math.abs(dy);
+      if(dt < 500) {
+        if(absX > 40 && absX > absY) {
+          dx < 0 ? laneLeft() : laneRight();
+        } else if(absY > 40) {
+          if(dy < 0) jump();
+        }
+      }
+      touchStart = null;
+    }, {passive:true});
+
+    // Soft keys
+    document.getElementById('leftKey').addEventListener('click', laneLeft);
+    document.getElementById('rightKey').addEventListener('click', laneRight);
+    document.getElementById('jumpKey').addEventListener('click', jump);
+
+    // UI buttons
+    document.getElementById('btnPlay').addEventListener('click', ()=>{ resetGame(); });
+    document.getElementById('btnHow').addEventListener('click', ()=>{ how.hidden = !how.hidden; });
+    document.getElementById('btnPause').addEventListener('click', ()=> togglePause());
+    document.getElementById('btnRestart').addEventListener('click', ()=> restart());
+
+    function togglePause(){
+      if(!state.running || state.gameOver) return;
+      state.paused = !state.paused;
+      elStatus.textContent = state.paused ? 'Paused' : 'Running';
+      showToast(state.paused ? 'Paused' : 'Resumed');
+    }
+    function restart(){
+      state.running = false; state.gameOver = false; menu.style.display = 'grid';
+      elStatus.textContent = 'Ready';
+    }
+
+    // --- Drawing helpers
+    function drawBackground() {
+      // Sky gradient
+      const g = ctx.createLinearGradient(0,0,0,VIRTUAL_H);
+      g.addColorStop(0, '#0d1228'); g.addColorStop(1, '#0b0f20');
+      ctx.fillStyle = g; ctx.fillRect(0,0,VIRTUAL_W,VIRTUAL_H);
+
+      // Perspective road (3 lanes)
+      const roadTop = VIRTUAL_H*0.25, roadBottom = VIRTUAL_H*0.95;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(VIRTUAL_W*0.18, roadTop);
+      ctx.lineTo(VIRTUAL_W*0.82, roadTop);
+      ctx.lineTo(VIRTUAL_W*0.92, roadBottom);
+      ctx.lineTo(VIRTUAL_W*0.08, roadBottom);
+      ctx.closePath();
+      ctx.fillStyle = '#1b203c';
+      ctx.fill();
+
+      // Lane lines
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.lineWidth = 2;
+      const laneXs = state.lanesX;
+      for(let i=0;i<3;i++){
+        const x = laneXs[i];
+        ctx.beginPath();
+        ctx.moveTo(x, roadTop);
+        ctx.lineTo(x + (x - VIRTUAL_W*0.5)*0.18, roadBottom); // slight perspective
+        ctx.stroke();
+      }
+
+      // Moving stripes to imply speed
+      const stripeCount = 12;
+      for(let i=0; i<stripeCount; i++){
+        const p = (i/stripeCount + (state.dist*0.06)%1);
+        const y = roadTop + p*(roadBottom-roadTop);
+        const w = 6 + p*10;
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.fillRect(VIRTUAL_W*0.5 - w/2, y, w, 10);
+      }
+      ctx.restore();
+
+      // Parallax buildings
+      for(let layer=0; layer<2; layer++){
+        const h = layer===0 ? 80 : 120;
+        const y = VIRTUAL_H*0.25 - h + (layer===0?10:0);
+        ctx.globalAlpha = layer===0 ? 0.25 : 0.15;
+        const step = layer===0 ? 90 : 140;
+        const offset = -((state.dist * (layer===0?0.5:0.25)) % step);
+        for(let x=offset; x<VIRTUAL_W+step; x+= step){
+          const bw = step*0.6, bh = h + Math.sin((x+layer*37)*0.05)*10;
+          ctx.fillStyle = '#0e1430'; ctx.fillRect(x, y+ (layer===0?12:0), bw, bh);
+          ctx.fillStyle = '#0b1026'; ctx.fillRect(x+6, y+8+ (layer===0?12:0), bw-12, bh-8);
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    function drawHUD(){
+      elScore.textContent = state.score;
+      elBest.textContent = state.best;
+      elSpd.textContent = (state.speedMul).toFixed(1) + 'x';
+    }
+
+    function drawItem(item){
+      const laneX = state.lanesX[item.lane];
+      const y = zToScreenY(item.z);
+      ctx.font = '28px system-ui, emoji';
+      ctx.textAlign = 'center';
+      ctx.fillText(item.food, laneX, y);
+    }
+
+    function drawObstacle(o){
+      const laneX = state.lanesX[o.lane];
+      const y = zToScreenY(o.z);
+      const w = 40, h = o.size==='tall' ? 60 : 36;
+      ctx.fillStyle = o.hit ? 'rgba(255,107,107,0.9)' : 'rgba(255,255,255,0.15)';
+      ctx.fillRect(laneX - w/2, y - h, w, h);
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 2; ctx.strokeRect(laneX - w/2, y - h, w, h);
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillRect(laneX - w/2, y - h + 8, w, 6);
+    }
+
+    // Convert world z (negative towards horizon) to screen y
+    const roadTop = VIRTUAL_H*0.25, roadBottom = VIRTUAL_H*0.95;
+    function zToScreenY(z){
+      // z=0 near player baseline, -20 at horizon
+      const t = clamp(1 + z/20, 0, 1);
+      return roadTop + t * (roadBottom - roadTop);
+    }
+
+    function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh){
+      return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+    }
+
+    // --- Main loop
+    let last = performance.now();
+    function loop(now){
+      requestAnimationFrame(loop);
+      const dt = Math.min(0.033, (now - last) / 1000); // clamp for stability
+      last = now;
+
+      if(!state.running || state.paused) {
+        drawFrame(dt, true);
+        return;
+      }
+
+      // Update
+      state.t += dt;
+      const worldSpeed = state.speed * state.speedMul;
+      state.dist += worldSpeed * dt;
+
+      // Speed up gradually
+      state.speedMul = 1 + Math.min(2.5, state.dist / 600);
+
+      // Smooth lane move
+      state.lane += (state.targetLane - state.lane) * Math.min(1, dt*12);
+
+      // Jump physics
+      if(!state.onGround){
+        state.y = (state.y || 0);
+        state.y += state.jumpV;
+        state.jumpV -= state.gravity * dt;
+        if(state.y <= 0){ state.y = 0; state.onGround = true; state.jumpV = 0; }
+      }
+
+      // Spawning
+      state.spawnTimerItem -= dt; state.spawnTimerObs -= dt;
+      if(state.spawnTimerItem <= 0){ spawnItem(); state.spawnTimerItem = rand(0.5, 1.1) / state.speedMul; }
+      if(state.spawnTimerObs <= 0){ spawnObstacle(); state.spawnTimerObs = rand(0.8, 1.4) / state.speedMul; }
+
+      // Move world (z forward)
+      for(const it of state.items) it.z += worldSpeed * dt;
+      for(const ob of state.obstacles) ob.z += worldSpeed * dt;
+
+      // Cleanup offscreen
+      state.items = state.items.filter(it => zToScreenY(it.z) < VIRTUAL_H + 50 && !it.taken);
+      state.obstacles = state.obstacles.filter(ob => zToScreenY(ob.z) < VIRTUAL_H + 50 && !ob.passed);
+
+      // Collisions
+      const px = state.lanesX[Math.round(state.lane)];
+      const py = state.yGround - (state.y||0);
+      const pbox = { x: px-18, y: py-56, w: 36, h: 56 };
+
+      for(const it of state.items){
+        const ix = state.lanesX[it.lane];
+        const iy = zToScreenY(it.z);
+        const ibox = { x: ix-16, y: iy-28, w: 32, h: 28 };
+        if(rectsOverlap(pbox.x,pbox.y,pbox.w,pbox.h, ibox.x,ibox.y,ibox.w,ibox.h)){
+          if(!it.taken){ it.taken = true; state.score += 1; showToast(`+1 ${it.food}`); }
+        }
+      }
+
+      for(const ob of state.obstacles){
+        const ox = state.lanesX[ob.lane];
+        const oy = zToScreenY(ob.z);
+        const h = ob.size==='tall' ? 60 : 36;
+        const obox = { x: ox-20, y: oy-h, w: 40, h };
+        if(rectsOverlap(pbox.x,pbox.y,pbox.w,pbox.h, obox.x,obox.y,obox.w,obox.h)){
+          if(!ob.hit){ ob.hit = true; hit(); }
+        }
+        if(oy > state.yGround + 40) ob.passed = true;
+      }
+
+      drawFrame(dt, false);
+    }
+
+    function hit(){
+      state.juice = 1;
+      gameOver();
+    }
+
+    function gameOver(){
+      state.gameOver = true; state.running = false; elStatus.textContent = 'Game Over';
+      if(state.score > state.best){ state.best = state.score; localStorage.setItem('food_dash_best', state.best); }
+      setTimeout(()=>{
+        menu.style.display = 'grid';
+        const title = menu.querySelector('.title');
+        title.innerHTML = `💥 Game Over — Score ${state.score}`;
+        menu.querySelector('.subtitle').textContent = `Best ${state.best}. Tap Play to try again!`;
+      }, 300);
+    }
+
+    function drawFrame(dt, paused){
+      drawBackground();
+
+      // Draw items/obstacles sorted by z for simple depth cue
+      const draws = [];
+      for(const it of state.items) draws.push({ y: zToScreenY(it.z), kind:'item', it });
+      for(const ob of state.obstacles) draws.push({ y: zToScreenY(ob.z), kind:'ob', ob });
+      draws.sort((a,b)=> a.y - b.y);
+
+      for(const d of draws){ if(d.kind==='item') drawItem(d.it); else drawObstacle(d.ob); }
+
+      // Draw player
+      const px = state.lanesX[state.lane];
+      const py = state.yGround - (state.y||0);
+      if(state.juice>0){ ctx.save(); ctx.globalAlpha = 0.6 + Math.sin(state.t*40)*0.4; ctx.fillStyle = 'rgba(255,107,107,0.25)'; ctx.fillRect(0,0,VIRTUAL_W,VIRTUAL_H); ctx.restore(); state.juice -= dt*2; if(state.juice<0) state.juice=0; }
+      drawPlayer(px, py);
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath(); ctx.ellipse(px, state.yGround-6, 24, 8, 0, 0, Math.PI*2); ctx.fill();
+
+      // Pause overlay
+      if(paused && !state.gameOver){
+        ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0,0,VIRTUAL_W,VIRTUAL_H);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 28px system-ui'; ctx.textAlign = 'center'; ctx.fillText('Paused', VIRTUAL_W/2, VIRTUAL_H*0.45);
+      }
+
+      drawHUD();
+    }
+
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
